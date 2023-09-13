@@ -6,18 +6,53 @@ import numpy as np
 import pytesseract
 from PIL import ImageGrab
 
+LOOT_KEY="F12"
 RESTING_TIME=10
-MY_CHAR_REGION=(760, 361, 126, 104)
 POTION_THRASHOLD=2000
 POTION_TYPE="ultra"
 POKEBALL_TYPE="ultra"
 FOOD_TYPE="pizza"
+MY_POKE_NAME='pikachu'
 
-# attackList = ['shellder', 'tentacool', 'staryu', 'krabby', ]
+botLoopCount = 0
+shinyCatchCount = 0
+pokeCatchCount = 0
+totalBattleCount = 0
+attackList = ['shellder', 'tentacool', 'staryu', 'krabby', 'magikarp']
 # attackList = ['spheal', 'seel', 'chinchou']
-attackList = ['sealeo', 'poliwhirl', 'seadra','seaking', 'magikarp']
-catchList = ['sealeo', 'poliwhirl', 'seadra','seaking', 'shiny_seadra']
-skillList = ["F5", "F4", "F3", "F1", "F2", "F6"]
+# attackList = ['sealeo', 'poliwhirl', 'seadra','seaking', 'magikarp']
+catchList = ['sealeo', 'poliwhirl', 'seadra','seaking', 'shiny_seadra', 'shiny_tentacool', 'shiny_krabby']
+skillList = ["F5", "F4", "F3", "F1", "F7", "F9", "F2", "F6"]
+
+def getAttackingPokemonRegion(pokeName):
+    original_image = cv2.imread(f"assets/attack/{pokeName}_battle.jpg")
+    _, original_image_bw = cv2.threshold(original_image, 128, 255, cv2.THRESH_BINARY)
+    cv2.imwrite("assets/temp/current_attack_poke_binary.jpg", original_image_bw)
+
+    imagem_alvo = cv2.imread("assets/temp/current_attack_poke_binary.jpg")
+
+    tela = pyautogui.screenshot(region=BPREGION)
+    imagem_tela = np.array(tela)
+    imagem_tela_rgb = cv2.cvtColor(imagem_tela, cv2.COLOR_BGR2RGB)
+
+    limite_inferior = np.array([0, 0, 100])
+    limite_superior = np.array([100, 100, 255])
+
+    mascara_vermelha = cv2.inRange(imagem_tela_rgb, limite_inferior, limite_superior)
+
+    imagem_tela_mascarada = cv2.bitwise_and(imagem_tela, imagem_tela, mask=mascara_vermelha)
+
+    resultado = cv2.matchTemplate(imagem_tela_mascarada, imagem_alvo, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, max_loc = cv2.minMaxLoc(resultado)
+
+    limite_confianca = 0.35
+
+    if max_val >= limite_confianca:
+        x, y = max_loc
+        w, h = imagem_alvo.shape[1], imagem_alvo.shape[0]
+        return [x, y, w, h]
+    else:
+        return None
 
 def getCenterScreenRegion(size):
     largura, altura = pyautogui.size()
@@ -30,25 +65,33 @@ def getCenterScreenRegion(size):
     return (x, y, x2, y2)
 
 def extractPokemonLife():
-    # Tirar um screenshot da tela inteira
     tela = ImageGrab.grab()
-    # Converter o screenshot para uma imagem OpenCV
+
     imagem = cv2.cvtColor(np.array(tela), cv2.COLOR_RGB2BGR)
-    # Defina a região de interesse (ROI)
+
     roi_x, roi_y, roi_largura, roi_altura = 97, 65, 176, 32
     roi = imagem[roi_y:roi_y+roi_altura, roi_x:roi_x+roi_largura]
-    # Aplicar pré-processamento na ROI
-    roi_cinza = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    _, thresholded = cv2.threshold(roi_cinza, 150, 255, cv2.THRESH_BINARY)
-    # Aplicar OCR (Reconhecimento Óptico de Caracteres)
-    vida = pytesseract.image_to_string(thresholded, config='--psm 6')
-    # Filtrar apenas os números antes do caractere '/'
+
+    largura_aumentada = 2 * roi_largura  # Aumentar a largura
+    altura_aumentada = 2 * roi_altura  # Aumentar a altura
+    roi_aumentada = cv2.resize(roi, (largura_aumentada, altura_aumentada))
+
+    roi_cinza = cv2.cvtColor(roi_aumentada, cv2.COLOR_BGR2GRAY)
+
+    _, thresholded = cv2.threshold(roi_cinza, 185, 255, cv2.THRESH_BINARY)
+
+    kernel = np.ones((3, 2), np.uint8)
+    thresholded = cv2.dilate(thresholded, kernel, iterations=1)
+    kernel = np.ones((1, 2), np.uint8)
+    thresholded = cv2.erode(thresholded, kernel, iterations=1)
+
+    vida = pytesseract.image_to_string(thresholded, config='--oem 3 --psm 6')
     vida = vida.split('/')[0]
 
     try:
         lifeNum = int(vida)
     except:
-        lifeNum = 0 
+        lifeNum = 99999999
 
     return lifeNum
 
@@ -62,6 +105,7 @@ def clickOnScreen(SQM, clickType = 'left'):
     sleep(0.1)
 
 def checkRevive():
+    # print('Check Revive...')
     deadPokeball = pyautogui.locateOnScreen("assets/general/pokeballOff.jpg", region=(0,0,600,600), confidence=0.98)
     while deadPokeball != None:
         print('Try Reviving your pokemon..')
@@ -72,27 +116,11 @@ def checkRevive():
         clickOnScreen(deadPokeball)
         clickOnScreen(deadPokeball) 
         deadPokeball = pyautogui.locateOnScreen("assets/general/pokeballOff.jpg", region=(0,0,600,600), confidence=0.98)
-
-def atackPokemon(pokeTargetSQM, pokeName = ''):
-    print('Start attack wild pokemon: ', pokeName)
-    
-    clickOnScreen(pokeTargetSQM)
-
-    attacking = True
-    while attacking:
-        checkRevive()    
-        attacking = pyautogui.locateOnScreen(f"assets/attack/{pokeName}_battle.jpg", region=BPREGION, confidence=0.9)
-        if attacking != None:
-            print('Attacking wild pokemon...')  
-            useAllAtacks()
-            changeTarget = pyautogui.locateOnScreen("assets/general/changeTarget.jpg", confidence=0.9)
-            if changeTarget != None:
-                attacking = False
-                print('Wild pokemon is dead...')
-        else:
-            print('Wild pokemon is dead...')
-            attacking = False
-
+        return True
+    if deadPokeball == None:
+        # print('Your pokemon is alive...')
+        return False
+        
 def useAllAtacks():
     for skill in skillList:
         myKeyboard.press(skill)
@@ -123,52 +151,85 @@ def lootAround():
     myKeyboard.press(LOOT_KEY)
     sleep(0.3)
 
-def pokebola(corpseSQM, pokeName = '-'):
-    print('Use pokeball on pokemon corpse: ', pokeName)
-    pokebalItem = pyautogui.locateOnScreen(f"assets/pokeballs/{POKEBALL_TYPE}_ball.jpg", region=BPREGION, confidence=0.95)
-    clickOnScreen(pokebalItem, 'right')
-    clickOnScreen(corpseSQM)
-
 def solveMinigame():
-    fish = True
-    while fish != None:
-        bar = pyautogui.locateOnScreen("assets/general/minigameBar.jpg", confidence=0.87)
-        fish = pyautogui.locateOnScreen("assets/general/minigameFish.jpg", confidence=0.65, grayscale=True)
+    def getFish():
+        return pyautogui.locateOnScreen("assets/general/minigameFish.jpg", confidence=0.65, grayscale=True)
+    def getGameBar():
+        return pyautogui.locateOnScreen("assets/general/minigameBar.jpg", confidence=0.87)
+    
+    BACKSPACE_KEY=0x39
+    fish = getFish()
 
-        print('Trying to solve minigame...')
+    if fish != None:
+        print('Detected minigame, try to solve...')
+
+    while fish != None:
+        bar = getGameBar()
+        fish = getFish()
+
         if bar != None and fish != None:
             if fish.top < bar.top:
-                myKeyboard.key_down(0x39)
+                myKeyboard.key_down(BACKSPACE_KEY)
             else:
-                myKeyboard.release_key(0x39)
+                myKeyboard.release_key(BACKSPACE_KEY)
         else:       
-            myKeyboard.key_down(0x39)
-            myKeyboard.release_key(0x39)    
+            myKeyboard.key_down(BACKSPACE_KEY)
+            myKeyboard.release_key(BACKSPACE_KEY)    
 
     print('Dont detected minigame...') 
 
 def checkAndPutPokemonInBattle():
     pokeInBattle = pyautogui.locateOnScreen("assets/general/pokeInBattle.jpg", confidence=0.9)
     if pokeInBattle == None:
+        if checkRevive():
+            return
         print("Put pokemon in battle..")
         myKeyboard.key_down(0x1D)
         myKeyboard.press('F1')
         myKeyboard.release_key(0x1D)
 
+def atackPokemon(pokeTargetSQM, pokeName = ''):
+    print('Start attack wild pokemon: ', pokeName) 
+    clickOnScreen(pokeTargetSQM)
+    totalBattleCount += 1
+
+    attacking = True
+    while attacking:
+        checkRevive()    
+        attacking = getAttackingPokemonRegion(pokeName)
+        if attacking != None:
+            useAllAtacks()
+        else:
+            print('Wild pokemon is dead...')
+            attacking = False
+
 def attackPokemonsOnScreen():
     hasPokemon = True
+    killOne = False
     while hasPokemon:
         wasAttacked = False
         for name in attackList:
-            pokemon = pyautogui.locateOnScreen(f"assets/attack/{name}_battle.jpg", region=BPREGION, confidence=0.65, grayscale=True)
+            pokemon = pyautogui.locateOnScreen(f"assets/attack/{name}_battle.jpg", region=BPREGION, confidence=0.90)
             if pokemon != None:
                 wasAttacked = True
+                killOne = True
                 checkAndPutPokemonInBattle()
                 atackPokemon(pokemon, name)
                 break            
         if not wasAttacked:
             print("No Pokemons to Attack..")
             hasPokemon = False
+    return killOne
+
+def pokebola(corpseSQM, pokeName = '-'):
+    print('Use pokeball on pokemon corpse: ', pokeName)
+    if(pokeName.startswith('shiny_')):
+        shinyCatchCount += 1
+    else:
+        pokeCatchCount += 1
+    pokebalItem = pyautogui.locateOnScreen(f"assets/pokeballs/{POKEBALL_TYPE}_ball.jpg", region=BPREGION, confidence=0.95)
+    clickOnScreen(pokebalItem, 'right')
+    clickOnScreen(corpseSQM)
 
 def catchPokemonsOnScreen():
     hasPokemon = True
@@ -185,7 +246,7 @@ def catchPokemonsOnScreen():
             hasPokemon = False
 
 def checkPokeHappyness():
-    print("Check Pokemon Happyness...")
+    # print("Check Pokemon Happyness...")
     rageStatus = pyautogui.locateOnScreen("assets/poke-status/rage_status.jpg", confidence=0.9)
     badStatus = pyautogui.locateOnScreen("assets/poke-status/bad_status.jpg", confidence=0.9)
     sadStatus = pyautogui.locateOnScreen("assets/poke-status/sad_status.jpg", confidence=0.9)
@@ -201,7 +262,7 @@ def checkPokeHappyness():
         clickOnScreen(sadStatus)
         
 def checkPokeHungry():
-    print('Check If Pokemon is Hungry...')
+    # print('Check If Pokemon is Hungry...')
     myPokeSQM = pyautogui.locateOnScreen("assets/attack/mypoke_battle.jpg", confidence=0.98)
     hungryStatus = pyautogui.locateOnScreen("assets/poke-status/hungry_status.jpg", confidence=0.95)
     if hungryStatus != None:
@@ -216,8 +277,8 @@ def checkPokeHungry():
                 print("Your pokemon not detected...")
         else:
             print("Food not detected...")
-    else:
-        print("Your pokemon is not hungry...")
+    # else:
+    #     print("Your pokemon is not hungry...")
 
 def usePotionInPokemon(potion):
     print("Use potion in pokemon: " + potion)
@@ -233,7 +294,7 @@ def usePotionInPokemon(potion):
         print("Potion not detected...")
 
 def checkPokeLife():
-    print('Check Pokemon Life...')
+    # print('Check Pokemon Life...')
     life = extractPokemonLife()
     print("Pokemon Life:", life)
     if life <= POTION_THRASHOLD:
@@ -275,39 +336,43 @@ sleep(0.25)
 catchPokemonsOnScreen()
 sleep(0.25)
 
-count = 1
-
 while True:
-    bolhas = pyautogui.locateOnScreen("assets/general/bubbleSQM.jpg", confidence=0.75)
-    fishing = pyautogui.locateOnScreen("assets/general/fishingSkin.jpg", region=MY_CHAR_REGION, confidence=0.75)
+    bolhas = pyautogui.locateOnScreen("assets/general/bubbleSQM.jpg", region=getCenterScreenRegion(600), confidence=0.75)
+    fishing = pyautogui.locateOnScreen("assets/general/fishingSkin.jpg", region=getCenterScreenRegion(600), confidence=0.75)
 
     if fishing == None:
         print('Fishing not detected...')
+        botLoopCount += 1
         startFishing()
+        print("Wait fish to bite the hook...")
 
     if bolhas != None:
         print('Fishing bubbles detected...')
-        print('ISCAS USADAS:', count)
         checkAndPutPokemonInBattle()
 
         getFish()
 
-        attackPokemonsOnScreen()
-        checkRevive()
-        lootAround()
-        if len(catchList) > 0:
-            catchPokemonsOnScreen()
-
-        checkPokeLife()
+        if(len(attackList) > 0):
+            if attackPokemonsOnScreen():
+                lootAround()
+            if len(catchList) > 0:
+                catchPokemonsOnScreen()
 
         print("Battle Finished...")
 
-        checkRevive()
-        sleep(RESTING_TIME)
-
+        
+        checkPokeLife()
         checkPokeHappyness()
-
         checkPokeHungry()
 
-        count += 1
+        print("Wait pokemon rest...")
+        sleep(RESTING_TIME)
+
+        print("################################################")
+        print('CONTADOR DE ISCAS:', botLoopCount)
+        print('TENTATIVA DE SHINY:', shinyCatchCount)
+        print('TENTATIVA DE POKE:', pokeCatchCount)
+        print('TOTAL POKES DERROTADOS:', totalBattleCount)
+        print('CONTADOR DE SHINY:', shinyCatchCount)
+        
 
