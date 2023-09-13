@@ -10,16 +10,16 @@ LOOT_KEY="F12"
 RESTING_TIME=10
 POTION_THRASHOLD=2000
 POTION_TYPE="ultra"
-POKEBALL_TYPE="ultra"
+POKEBALL_TYPE="super"
 FOOD_TYPE="pizza"
-MY_POKE_NAME='farfetch'
+MY_POKE_NAME='pikachu'
 
 botWormsCount = 0
 shinyCatchCount = 0
 pokeCatchCount = 0
 totalBattleCount = 0
 attackList = ['sealeo', 'poliwhirl', 'seadra','seaking', 'spheal', 'seel', 'chinchou', 'shellder', 'tentacool', 'staryu', 'krabby', 'magikarp']
-catchList = ['sealeo', 'poliwhirl', 'seadra','seaking', 'shiny_seadra', 'shiny_tentacool', 'shiny_krabby']
+catchList = ['sealeo', 'poliwhirl', 'seadra','seaking', 'shiny_seadra', 'shiny_tentacool', 'shiny_krabby', 'seel', 'spheal']
 skillList = ["F5", "F4", "F3", "F1", "F7", "F9", "F2", "F6"]
 
 def charIsFishing():
@@ -267,7 +267,7 @@ def catchPokemonsOnScreen():
     while hasPokemon:
         wasUsePokeball = False
         for name in catchList:
-            pokemon = pyautogui.locateOnScreen(f"assets/catch/{name}_corpse.jpg", confidence=0.93)
+            pokemon = pyautogui.locateOnScreen(f"assets/catch/{name}_corpse.jpg", confidence=0.9)
             if pokemon != None:
                 pokebola(pokemon, name)
                 wasUsePokeball = True
@@ -409,7 +409,10 @@ while True:
     if bolhas != None:
         print('Fishing bubbles detected...')
         checkAndPutPokemonInBattle()
-
+        checkPokeLife()
+        checkPokeHappyness()
+        checkAndGivePokeFood()
+        
         getFish()
 
         if(len(attackList) > 0):
@@ -417,13 +420,6 @@ while True:
                 lootAround()
             if len(catchList) > 0:
                 catchPokemonsOnScreen()
-
-        print("Battle Finished...")
-
-        
-        checkPokeLife()
-        checkPokeHappyness()
-        checkAndGivePokeFood()
 
         print("Waiting pokemon rest time...")
         sleep(RESTING_TIME)
