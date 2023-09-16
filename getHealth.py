@@ -8,7 +8,7 @@ def extractPokemonLife():
 
     imagem = cv2.cvtColor(np.array(tela), cv2.COLOR_RGB2BGR)
 
-    roi_x, roi_y, roi_largura, roi_altura = 97, 65, 176, 32
+    roi_x, roi_y, roi_largura, roi_altura = 0, 0, 100, 150
     roi = imagem[roi_y:roi_y+roi_altura, roi_x:roi_x+roi_largura]
 
     largura_aumentada = 2 * roi_largura  # Aumentar a largura
